@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Takeoff Acceleration Warning (Prototype)</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --panel: #121b2f;
+      --panel2: #0f1830;
+      --text: #e8eefc;
+      --muted: #a9b6d8;
+      --ok: #1b7f55;
+      --caution: #b07b00;
+      --warn: #b02a2a;
+      --btn: #2a3f76;
+      --btn2: #1f2f59;
+      --line: rgba(255,255,255,0.10);
+    }
+    html, body { height: 100%; background: var(--bg); color: var(--text); margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 14px 14px 28px; }
+    h1 { font-size: 18px; margin: 10px 0 6px; letter-spacing: 0.2px; }
+    .disclaimer { font-size: 12px; color: var(--muted); line-height: 1.35; }
+    .grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+    @media (min-width: 860px) { .grid { grid-template-columns: 1.05fr 0.95fr; } }
+    .card { background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02)); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+    .card h2 { font-size: 14px; margin: 0 0 8px; color: #d7e2ff; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+    input, select {
+      width: 100%;
+      padding: 10px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(0,0,0,0.25);
+      color: var(--text);
+      outline: none;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .btnrow { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.03));
+      color: var(--text);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    button.primary { background: linear-gradient(180deg, rgba(70,110,255,0.35), rgba(70,110,255,0.12)); border-color: rgba(70,110,255,0.35); }
+    button.danger { background: linear-gradient(180deg, rgba(255,70,70,0.35), rgba(255,70,70,0.12)); border-color: rgba(255,70,70,0.35); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .status {
+      border-radius: 14px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .status.ok { background: rgba(27,127,85,0.20); border-color: rgba(27,127,85,0.35); }
+    .status.caution { background: rgba(176,123,0,0.22); border-color: rgba(176,123,0,0.35); }
+    .status.warn { background: rgba(176,42,42,0.22); border-color: rgba(176,42,42,0.40); }
+    .big { font-size: 18px; font-weight: 700; margin: 0 0 8px; letter-spacing: 0.3px; }
+    .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+    .k { font-size: 12px; color: var(--muted); }
+    .v { font-size: 16px; font-variant-numeric: tabular-nums; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .small { font-size: 12px; color: var(--muted); }
+    .hr { height: 1px; background: var(--line); margin: 10px 0; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+    .log { max-height: 210px; overflow: auto; background: rgba(0,0,0,0.22); border: 1px solid var(--line); border-radius: 12px; padding: 10px; font-size: 12px; line-height: 1.35; }
+    .warntext { font-weight: 800; letter-spacing: 0.6px; }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>Takeoff Acceleration Warning — Standalone HTML Prototype</h1>
+    <div class="disclaimer">
+      <strong>Advisory prototype only.</strong> Not certified, not a performance calculator, and not for primary takeoff decisions.
+      iPhone sensor access requires <strong>HTTPS</strong> and user permission. DeviceMotion on iOS requires a user gesture to grant access.
+    </div>
+
+    <div class="grid">
+      <!-- LEFT: Controls -->
+      <div class="card">
+        <h2>Setup</h2>
+
+        <label>Airport (ICAO)</label>
+        <div class="row">
+          <input id="icao" placeholder="e.g., KPDX" value="KPDX" />
+          <button id="btnMetar" class="primary">Load METAR</button>
+        </div>
+
+        <label>Runway selection (built-in sample list) or manual</label>
+        <select id="runwaySelect"></select>
+
+        <div class="row">
+          <div>
+            <label>Runway heading (deg)</label>
+            <input id="rwyHeading" type="number" step="0.1" />
+          </div>
+          <div>
+            <label>Runway length (ft)</label>
+            <input id="rwyLength" type="number" step="1" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>Vr (IAS, kt)</label>
+            <input id="vrIas" type="number" step="0.1" value="65" />
+          </div>
+          <div>
+            <label>Effective runway buffer (ft)</label>
+            <input id="rwyBuffer" type="number" step="1" value="200" />
+          </div>
+        </div>
+
+        <div class="row3">
+          <div>
+            <label>Base safety margin (ft)</label>
+            <input id="baseMargin" type="number" step="1" value="500" />
+          </div>
+          <div>
+            <label>Reaction time (s)</label>
+            <input id="reactSec" type="number" step="0.1" value="2.0" />
+          </div>
+          <div>
+            <label>Enhanced IAS→TAS</label>
+            <select id="enhanced">
+              <option value="1" selected>On (approx.)</option>
+              <option value="0">Off (IAS≈TAS)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="btnrow">
+          <button id="btnPerm" class="primary">Request Sensor Permissions</button>
+          <button id="btnArm" class="primary">ARM (Start = Current Position)</button>
+          <button id="btnDisarm" class="danger" disabled>DISARM</button>
+          <button id="btnReset" title="Resets filter & state (does not clear METAR)">Reset</button>
+        </div>
+
+        <div class="hr"></div>
+        <div class="small">
+          <div><span class="pill">Voice</span> Uses SpeechSynthesis. If muted, check iPhone silent switch and volume.</div>
+          <div style="margin-top:6px;"><span class="pill">METAR</span> Fetch uses aviationweather.gov API. If blocked by CORS/network policy, METAR will not load in-browser.</div>
+        </div>
+
+        <div class="hr"></div>
+        <div class="small mono" id="metarBox">METAR: not loaded</div>
+      </div>
+
+      <!-- RIGHT: Status / outputs -->
+      <div class="card">
+        <h2>Status</h2>
+
+        <div id="status" class="status">
+          <div class="big">State: <span id="stateText">DISARMED</span></div>
+          <div class="kv">
+            <div>
+              <div class="k">Vr (GS, kt)</div>
+              <div class="v mono" id="vrGs">—</div>
+            </div>
+            <div>
+              <div class="k">Fused GS (kt)</div>
+              <div class="v mono" id="fusedGs">—</div>
+            </div>
+            <div>
+              <div class="k">Fused accel (m/s²)</div>
+              <div class="v mono" id="fusedA">—</div>
+            </div>
+            <div>
+              <div class="k">Runway remaining (ft)</div>
+              <div class="v mono" id="rwyRem">—</div>
+            </div>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="kv">
+            <div>
+              <div class="k">Needed (ft)</div>
+              <div class="v mono" id="needFt">—</div>
+            </div>
+            <div>
+              <div class="k">Margin (ft)</div>
+              <div class="v mono" id="marginFt">—</div>
+            </div>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="small mono">
+            GPS: <span id="gpsLine">—</span><br/>
+            IMU: <span id="imuLine">—</span><br/>
+            Note: iOS DeviceMotion axes require validation; this prototype uses GPS-dominant fusion and IMU as a supplemental measurement.
+          </div>
+
+          <div class="hr"></div>
+          <div class="log mono" id="log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const now = () => performance.now();
+function clamp(x, lo, hi) { return Math.min(Math.max(x, lo), hi); }
+function degToRad(d) { return d * Math.PI / 180; }
+function radToDeg(r) { return r * 180 / Math.PI; }
+function wrap360(d) { d = d % 360; return d < 0 ? d + 360 : d; }
+function ktToMps(kt) { return kt * 0.514444; }
+function mpsToKt(mps) { return mps / 0.514444; }
+function ftToM(ft) { return ft * 0.3048; }
+function mToFt(m) { return m / 0.3048; }
+function speak(text) { try { const u = new SpeechSynthesisUtterance(text); u.rate = 0.95; window.speechSynthesis.speak(u); } catch (e) {} }
+function logLine(s) { const el = $("log"); const ts = new Date().toISOString().split("T")[1].replace("Z",""); el.textContent = `[${ts}] ${s}\n` + el.textContent; }
+
+const RUNWAYS = {
+  "KPDX": [
+    { name: "10L", heading: 100.0, lengthFt: 11000 },
+    { name: "10R", heading: 100.0, lengthFt: 9000 },
+    { name: "28L", heading: 280.0, lengthFt: 9000 },
+    { name: "28R", heading: 280.0, lengthFt: 11000 }
+  ],
+  "KSEA": [
+    { name: "16L", heading: 160.0, lengthFt: 11901 },
+    { name: "16C", heading: 160.0, lengthFt: 9426 },
+    { name: "16R", heading: 160.0, lengthFt: 11901 },
+    { name: "34L", heading: 340.0, lengthFt: 11901 },
+    { name: "34C", heading: 340.0, lengthFt: 9426 },
+    { name: "34R", heading: 340.0, lengthFt: 11901 }
+  ]
+};
+
+function populateRunways() {
+  const icao = $("icao").value.trim().toUpperCase();
+  const sel = $("runwaySelect");
+  sel.innerHTML = "";
+  const list = RUNWAYS[icao] || [];
+  if (list.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Manual (no sample runways for this ICAO)";
+    sel.appendChild(opt);
+    $("rwyHeading").value = "";
+    $("rwyLength").value = "";
+    return;
+  }
+  for (const r of list) {
+    const opt = document.createElement("option");
+    opt.value = r.name;
+    opt.textContent = `${r.name} — ${Math.round(r.lengthFt)} ft @ ${r.heading.toFixed(1)}°`;
+    sel.appendChild(opt);
+  }
+  sel.value = list[0].name;
+  $("rwyHeading").value = list[0].heading;
+  $("rwyLength").value = list[0].lengthFt;
+}
+
+let metar = null;
+async function loadMetar() {
+  const station = $("icao").value.trim().toUpperCase();
+  $("metarBox").textContent = "METAR: loading…";
+  metar = null;
+  try {
+    const url = new URL("https://aviationweather.gov/api/data/metar");
+    url.searchParams.set("ids", station);
+    url.searchParams.set("format", "json");
+    const resp = await fetch(url.toString(), { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    if (!Array.isArray(data) || !data.length) throw new Error("No METAR returned");
+    const raw = data[0] || {};
+    metar = {
+      station: raw.stationId || raw.station || station,
+      rawText: raw.rawOb || raw.rawText || raw.raw || JSON.stringify(raw),
+      windDirDeg: (raw.wdir ?? raw.windDir ?? raw.wind_dir) != null ? Number(raw.wdir ?? raw.windDir ?? raw.wind_dir) : null,
+      windSpeedKt: (raw.wspd ?? raw.windSpeed ?? raw.wind_speed) != null ? Number(raw.wspd ?? raw.windSpeed ?? raw.wind_speed) : null,
+      windGustKt: (raw.wgst ?? raw.windGust ?? raw.wind_gust) != null ? Number(raw.wgst ?? raw.windGust ?? raw.wind_gust) : null,
+      altimeterInHg: (raw.altim ?? raw.altimeter) != null ? Number(raw.altim ?? raw.altimeter) : null,
+      tempC: (raw.temp ?? raw.temperature) != null ? Number(raw.temp ?? raw.temperature) : null
+    };
+    $("metarBox").textContent =
+      `METAR ${metar.station}: ${metar.rawText}\n` +
+      `Wind: ${metar.windDirDeg ?? "—"}° / ${metar.windSpeedKt ?? "—"} kt (G ${metar.windGustKt ?? "—"})   ` +
+      `Alt: ${metar.altimeterInHg ?? "—"} inHg   Temp: ${metar.tempC ?? "—"}°C`;
+    logLine(`METAR loaded for ${station}.`);
+  } catch (e) {
+    $("metarBox").textContent = `METAR: failed (${e.message}). If this is CORS-blocked, you will need a proxy or a different endpoint policy.`;
+    logLine(`METAR load failed: ${e.message}`);
+  }
+}
+
+function headwindComponentKt(runwayHeadingDeg, metarObj) {
+  if (!metarObj || metarObj.windDirDeg == null || metarObj.windSpeedKt == null) return 0;
+  const wd = metarObj.windDirDeg;
+  const ws = metarObj.windSpeedKt;
+  const delta = degToRad(wd - runwayHeadingDeg);
+  const hw = ws * Math.cos(delta);
+  if (hw >= 0) {
+    if (metarObj.windGustKt != null && !Number.isNaN(metarObj.windGustKt)) {
+      return Math.max(0, Math.min(hw, 0.5 * metarObj.windGustKt));
+    }
+    return Math.max(0, hw * 0.7);
+  }
+  return hw;
+}
+function densityRatioSigmaApprox(metarObj) {
+  if (!metarObj || metarObj.altimeterInHg == null || metarObj.tempC == null) return null;
+  const fieldElevFt = 0;
+  const alt = metarObj.altimeterInHg;
+  const tC = metarObj.tempC;
+  const paFt = fieldElevFt + (29.92 - alt) * 1000.0;
+  const tIsaC = 15.0 - 2.0 * (paFt / 1000.0);
+  const daFt = paFt + 120.0 * (tC - tIsaC);
+  const term = Math.max(0.0, 1.0 - 6.875e-6 * daFt);
+  const sigma = Math.pow(term, 4.256);
+  return clamp(sigma, 0.2, 1.2);
+}
+function computeVrGsKt(vrIasKt, runwayHeadingDeg) {
+  const enhanced = $("enhanced").value === "1";
+  let tasKt = vrIasKt;
+  if (enhanced) {
+    const sigma = densityRatioSigmaApprox(metar);
+    if (sigma != null) tasKt = vrIasKt / Math.sqrt(Math.max(sigma, 0.2));
+  }
+  const hw = headwindComponentKt(runwayHeadingDeg, metar);
+  return Math.max(0, tasKt - hw);
+}
+
+const KF = {
+  x: [0,0,0],
+  P: [[10,0,0],[0,10,0],[0,0,10]],
+  Rv: 1.0*1.0,
+  Ra: 0.35*0.35,
+  sigmaAProc: 0.6,
+  sigmaBProc: 0.05,
+  predict(dt) {
+    dt = clamp(dt, 0.005, 0.2);
+    this.x = [ this.x[0] + this.x[1]*dt, this.x[1], this.x[2] ];
+    const F = [[1,dt,0],[0,1,0],[0,0,1]];
+    const FT = transpose(F);
+    const FP = matMul(F, this.P);
+    const FPFt = matMul(FP, FT);
+    const qA = (this.sigmaAProc*this.sigmaAProc) * dt;
+    const qB = (this.sigmaBProc*this.sigmaBProc) * dt;
+    const Q = [[0,0,0],[0,qA,0],[0,0,qB]];
+    this.P = matAdd(FPFt, Q);
+  },
+  updateGpsSpeed(z){ this.updateScalar(z, [1,0,0], this.Rv); },
+  updateImuAccel(z){ this.updateScalar(z, [0,1,1], this.Ra); },
+  updateScalar(z, H, R){
+    const hx = dot(H, this.x);
+    const y = z - hx;
+    const HP = rowVecMul(H, this.P);
+    const S = dot(HP, H) + R;
+    const PHt = colVecMul(this.P, H);
+    const K = PHt.map(v => v / S);
+    this.x = this.x.map((xi,i)=> xi + K[i]*y);
+    const I = [[1,0,0],[0,1,0],[0,0,1]];
+    const KH = outer(K, H);
+    const IminusKH = matSub(I, KH);
+    this.P = matMul(IminusKH, this.P);
+  },
+  reset(){ this.x=[0,0,0]; this.P=[[10,0,0],[0,10,0],[0,0,10]]; }
+};
+function dot(a,b){ let s=0; for(let i=0;i<a.length;i++) s+=a[i]*b[i]; return s; }
+function transpose(A){ return A[0].map((_,j)=>A.map(r=>r[j])); }
+function matMul(A,B){
+  const out = Array.from({length:3}, ()=>[0,0,0]);
+  for(let i=0;i<3;i++) for(let j=0;j<3;j++)
+    out[i][j] = A[i][0]*B[0][j] + A[i][1]*B[1][j] + A[i][2]*B[2][j];
+  return out;
+}
+function matAdd(A,B){ return A.map((r,i)=>r.map((v,j)=>v+B[i][j])); }
+function matSub(A,B){ return A.map((r,i)=>r.map((v,j)=>v-B[i][j])); }
+function rowVecMul(v,M){ return [0,1,2].map(j => v[0]*M[0][j] + v[1]*M[1][j] + v[2]*M[2][j]); }
+function colVecMul(M,v){ return [0,1,2].map(i => M[i][0]*v[0] + M[i][1]*v[1] + M[i][2]*v[2]); }
+function outer(a,b){
+  const out = Array.from({length:3}, ()=>[0,0,0]);
+  for(let i=0;i<3;i++) for(let j=0;j<3;j++) out[i][j]=a[i]*b[j];
+  return out;
+}
+
+function haversineMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const p1 = degToRad(lat1), p2 = degToRad(lat2);
+  const dp = degToRad(lat2-lat1);
+  const dl = degToRad(lon2-lon1);
+  const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return 2*R*Math.asin(Math.min(1, Math.sqrt(a)));
+}
+function initialBearingDeg(lat1, lon1, lat2, lon2) {
+  const p1 = degToRad(lat1), p2 = degToRad(lat2);
+  const dl = degToRad(lon2-lon1);
+  const y = Math.sin(dl) * Math.cos(p2);
+  const x = Math.cos(p1)*Math.sin(p2) - Math.sin(p1)*Math.cos(p2)*Math.cos(dl);
+  return wrap360(radToDeg(Math.atan2(y,x)));
+}
+function alongRunwayMeters(start, cur, runwayHeadingDeg) {
+  const dist = haversineMeters(start.lat, start.lon, cur.lat, cur.lon);
+  const brg = initialBearingDeg(start.lat, start.lon, cur.lat, cur.lon);
+  const delta = degToRad(brg - runwayHeadingDeg);
+  return Math.max(0, dist * Math.cos(delta));
+}
+
+let armed = false;
+let state = "DISARMED";
+let startPos = null;
+let lastWarnSpoken = 0;
+let lastStateChange = 0;
+let lastConditionFalse = 0;
+let lastGpsT = 0;
+let lastImuT = 0;
+
+let gps = { lat:null, lon:null, speedMps:0, accM:999, courseDeg:null, ts:0 };
+let imu = { aLong:0, ts:0 };
+
+function setState(newState) {
+  if (newState === state) return;
+  state = newState;
+  lastStateChange = now();
+  updateStatusUI();
+  logLine(`State -> ${state}`);
+}
+function updateStatusUI(derived = null) {
+  $("stateText").textContent = state;
+  const st = $("status");
+  st.classList.remove("ok","caution","warn");
+  if (state === "WARNING") st.classList.add("warn");
+  else if (state === "CAUTION") st.classList.add("caution");
+  else if (state === "ARMED") st.classList.add("ok");
+
+  if (derived) {
+    $("vrGs").textContent = derived.vrGsKt.toFixed(1);
+    $("fusedGs").textContent = derived.fusedGsKt.toFixed(1);
+    $("fusedA").textContent = derived.fusedA.toFixed(2);
+    $("rwyRem").textContent = Math.max(0, derived.rwyRemFt).toFixed(0);
+    $("needFt").textContent = Math.max(0, derived.needFt).toFixed(0);
+    $("marginFt").textContent = Math.max(0, derived.marginFt).toFixed(0);
+  }
+  const gpsLine = (gps.lat==null) ? "no fix" :
+    `${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}  v=${mpsToKt(gps.speedMps).toFixed(1)} kt  acc=${gps.accM.toFixed(0)} m  course=${gps.courseDeg==null?"—":gps.courseDeg.toFixed(0)}°`;
+  $("gpsLine").textContent = gpsLine;
+  $("imuLine").textContent = `aLong=${imu.aLong.toFixed(2)} m/s²`;
+}
+function evaluate() {
+  if (!armed || !startPos || gps.lat == null) return;
+
+  const rwyHeading = Number($("rwyHeading").value || 0);
+  const rwyLenFt = Number($("rwyLength").value || 0);
+  const rwyBufFt = Number($("rwyBuffer").value || 0);
+  const baseMarginFt = Number($("baseMargin").value || 0);
+  const reactSec = Number($("reactSec").value || 0);
+  const vrIasKt = Number($("vrIas").value || 0);
+
+  const vrGsKt = computeVrGsKt(vrIasKt, rwyHeading);
+  const vrMps = ktToMps(vrGsKt);
+
+  const alongM = alongRunwayMeters(startPos, {lat:gps.lat, lon:gps.lon}, rwyHeading);
+  const effLenM = ftToM(Math.max(0, rwyLenFt - rwyBufFt));
+  const remM = clamp(effLenM - alongM, 0, effLenM);
+  const rwyRemFt = mToFt(remM);
+
+  const v = KF.x[0];
+  const a = Math.max(KF.x[1], 0.2);
+  let needM = 0;
+  if (v < vrMps) {
+    needM = (vrMps*vrMps - v*v) / (2*a);
+    needM = Math.max(0, needM);
+  }
+  const needFt = mToFt(needM);
+
+  const vFtPerSec = mToFt(v);
+  const sReact = vFtPerSec * reactSec;
+  const sUnc = Math.min(mToFt(gps.accM) * 3.0, 600.0);
+  const marginFt = baseMarginFt + sReact + sUnc;
+
+  const condition = (needFt + marginFt) > rwyRemFt;
+  const t = now();
+
+  if (state === "ARMED" || state === "CAUTION") {
+    if (condition) {
+      setState("WARNING");
+    } else {
+      lastConditionFalse = t;
+      const caution = (needFt + 0.7*marginFt) > rwyRemFt;
+      setState(caution ? "CAUTION" : "ARMED");
+    }
+  } else if (state === "WARNING") {
+    const holdMs = 2000;
+    const recoverMs = 3000;
+    if (t - lastStateChange < holdMs) {
+    } else if (!condition) {
+      if (t - lastConditionFalse >= recoverMs) setState("ARMED");
+    } else {
+      lastConditionFalse = t;
+    }
+  }
+
+  if (state === "WARNING") {
+    const intervalMs = (rwyRemFt < 1000) ? 1000 : 5000;
+    if (t - lastWarnSpoken >= intervalMs) {
+      lastWarnSpoken = t;
+      speak("Acceleration");
+    }
+  }
+
+  updateStatusUI({ vrGsKt, fusedGsKt: mpsToKt(v), fusedA: KF.x[1], rwyRemFt, needFt, marginFt });
+}
+
+let geoWatchId = null;
+function startGps() {
+  if (!navigator.geolocation) { logLine("Geolocation not available."); return; }
+  if (geoWatchId != null) navigator.geolocation.clearWatch(geoWatchId);
+
+  geoWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const c = pos.coords;
+      gps.lat = c.latitude;
+      gps.lon = c.longitude;
+      gps.accM = c.accuracy ?? 999;
+      gps.courseDeg = (c.heading != null && !Number.isNaN(c.heading)) ? c.heading : null;
+
+      const speed = (c.speed != null && !Number.isNaN(c.speed)) ? c.speed : 0;
+      gps.speedMps = Math.max(0, speed);
+      gps.ts = pos.timestamp || Date.now();
+
+      const t = now();
+      if (lastGpsT === 0) lastGpsT = t;
+      const dt = (t - lastGpsT) / 1000;
+      lastGpsT = t;
+
+      KF.predict(dt);
+      const gpsHealthy = gps.accM < 30 && gps.speedMps >= 0;
+      if (gpsHealthy) KF.updateGpsSpeed(gps.speedMps);
+
+      updateStatusUI();
+      evaluate();
+    },
+    (err) => logLine(`GPS error: ${err.message}`),
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
+  logLine("GPS watch started.");
+}
+
+function startImu() {
+  const tryStart = () => {
+    window.addEventListener("devicemotion", onMotion, { passive: true });
+    logLine("DeviceMotion listener attached.");
+  };
+  if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+    DeviceMotionEvent.requestPermission().then((res) => {
+      if (res === "granted") tryStart();
+      else logLine("DeviceMotion permission denied.");
+    }).catch((e) => logLine(`DeviceMotion permission error: ${e.message}`));
+  } else {
+    tryStart();
+  }
+}
+function onMotion(ev) {
+  const a = ev.acceleration || ev.accelerationIncludingGravity;
+  if (!a) return;
+  const aLong = Number(a.x ?? 0);
+  imu.aLong = isFinite(aLong) ? aLong : 0;
+
+  const t = now();
+  if (lastImuT === 0) lastImuT = t;
+  const dt = (t - lastImuT) / 1000;
+  lastImuT = t;
+
+  KF.predict(dt);
+  KF.updateImuAccel(imu.aLong);
+
+  updateStatusUI();
+  evaluate();
+}
+
+function resetAll() {
+  armed = false; startPos = null; KF.reset();
+  lastWarnSpoken = 0; lastStateChange = 0; lastConditionFalse = 0;
+  lastGpsT = 0; lastImuT = 0;
+  setState("DISARMED");
+  $("btnArm").disabled = false;
+  $("btnDisarm").disabled = true;
+  logLine("Reset complete.");
+}
+function arm() {
+  if (gps.lat == null) { logLine("Cannot ARM: no GPS fix."); return; }
+  const heading = Number($("rwyHeading").value || 0);
+  const len = Number($("rwyLength").value || 0);
+  const vr = Number($("vrIas").value || 0);
+  if (!isFinite(heading) || !isFinite(len) || len <= 0 || !isFinite(vr) || vr <= 0) {
+    logLine("Cannot ARM: check runway heading/length and Vr IAS."); return;
+  }
+  startPos = { lat: gps.lat, lon: gps.lon };
+  armed = true;
+  setState("ARMED");
+  $("btnArm").disabled = true;
+  $("btnDisarm").disabled = false;
+  logLine(`ARMED at ${startPos.lat.toFixed(5)}, ${startPos.lon.toFixed(5)}.`);
+  $("vrGs").textContent = computeVrGsKt(vr, heading).toFixed(1);
+}
+function disarm() {
+  armed = false; startPos = null;
+  setState("DISARMED");
+  $("btnArm").disabled = false;
+  $("btnDisarm").disabled = true;
+  logLine("Disarmed.");
+}
+
+$("btnMetar").addEventListener("click", loadMetar);
+$("icao").addEventListener("change", populateRunways);
+$("runwaySelect").addEventListener("change", () => {
+  const icao = $("icao").value.trim().toUpperCase();
+  const name = $("runwaySelect").value;
+  const list = RUNWAYS[icao] || [];
+  const r = list.find(x => x.name === name);
+  if (r) { $("rwyHeading").value = r.heading; $("rwyLength").value = r.lengthFt; }
+});
+$("btnPerm").addEventListener("click", () => { startGps(); startImu(); logLine("Requested sensor access (GPS + DeviceMotion)."); });
+$("btnArm").addEventListener("click", arm);
+$("btnDisarm").addEventListener("click", disarm);
+$("btnReset").addEventListener("click", resetAll);
+
+populateRunways();
+updateStatusUI();
+logLine("Loaded. Tip: On iPhone, host this file over HTTPS (e.g., local HTTPS dev server) for sensors.");
+</script>
+</body>
+</html>
