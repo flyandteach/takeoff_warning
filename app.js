@@ -95,13 +95,35 @@ function normalizeQuery(q){
   return (q||"").trim().toUpperCase();
 }
 
+// Accept common US patterns: ICAO KXXX and FAA/IATA XXX. Also allow FAA LIDs like 0J0.
+function normalizeAirportId(input){
+  const q = normalizeQuery(input);
+  if (/^K[A-Z]{3}$/.test(q)) return {icao:q, faa:q.substring(1)};
+  if (/^[A-Z]{3}$/.test(q)) return {icao:'K'+q, faa:q};
+  return {icao:q, faa:q};
+}
+
+function defaultMetarStationId(airportId){
+  const n = normalizeAirportId(airportId);
+  // If user chose an FAA/IATA 3-letter ID, prefer ICAO for METAR.
+  if (/^[A-Z]{3}$/.test(n.faa)) return n.icao;
+  return airportId;
+}
+
 function airportMatches(a, q){
   if (!q) return false;
+  const n = normalizeAirportId(q);
   const id = (a.arpt_id||"").toUpperCase();
   const city = (a.city||"").toUpperCase();
   const st = (a.state||"").toUpperCase();
-  if (id.startsWith(q)) return true;
+
+  // Match FAA/IATA (e.g., SEA) and ICAO (e.g., KSEA) to the same airport record when applicable
+  if (id === n.faa || id === n.icao) return true;
+  if (id.startsWith(n.faa) || id.startsWith(n.icao)) return true;
+
+  if ((city + " " + st).includes(n.faa) || (city + " " + st).includes(n.icao)) return true;
   if ((city + " " + st).includes(q)) return true;
+
   return false;
 }
 
@@ -131,15 +153,22 @@ function renderAirportResults(q){
 }
 
 function selectAirport(arptId){
-  const id = normalizeQuery(arptId);
-  const a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === id);
+  const q = normalizeQuery(arptId);
+  const n = normalizeAirportId(q);
+
+  // Prefer exact FAA/IATA match first; then ICAO; then fallback exact
+  let a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === n.faa);
+  if (!a) a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === n.icao);
+  if (!a) a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === q);
   if (!a) return;
+
   state.airport = a;
-  el("airportInput").value = id;
+  el("airportInput").value = (a.arpt_id||"").toUpperCase();
   el("airportResults").innerHTML = "";
+
   // restore per-airport METAR station override (if any)
   try{
-    const key = "metar_station_for_" + id;
+    const key = "metar_station_for_" + el("airportInput").value;
     const saved = localStorage.getItem(key);
     const o = el("metarStationInput");
     if (o) o.value = saved ? saved : "";
@@ -266,8 +295,8 @@ async function fetchMetar(){
     }
   }catch(e){ /* ignore */ }
 
-  // Default to airportId if no override
-  if (!stationId) stationId = airportId;
+  // Default station: prefer ICAO KXXX when airport is XXX
+  if (!stationId) stationId = defaultMetarStationId(airportId);
 
   // Use CORS-safe proxy (expects ?ids=...)
   const url = `${METAR_PROXY_BASE}?ids=${encodeURIComponent(stationId)}`;
@@ -675,8 +704,8 @@ window.addEventListener("load", async () => {
     const q = normalizeQuery(e.target.value);
     // Try direct select if exact
     if (q){
-      const a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === q);
-      if (a) selectAirport(q);
+      // Accept either FAA/IATA (XXX) or ICAO (KXXX)
+      selectAirport(q);
     }
   });
 
