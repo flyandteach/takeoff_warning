@@ -1,4 +1,4 @@
-const CACHE_NAME = "takeoff-pwa-v1";
+const CACHE_NAME = "takeoff-pwa-v5";
 const ASSETS = [
   "./",
   "./index.html",

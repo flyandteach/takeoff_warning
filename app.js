@@ -11,6 +11,7 @@ const el = (id) => document.getElementById(id);
 
 const state = {
   data: null,
+  airportIndex: null,
   airport: null,
   runway: null,
   takeoffEnd: null,   // selected end object
@@ -87,8 +88,27 @@ async function loadData(){
   const resp = await fetch("./data/runways.json", {cache:"no-cache"});
   const data = await resp.json();
   state.data = data;
+
+  // Build a robust lookup so FAA/IATA (e.g., SPG) and ICAO (e.g., KSPG) both resolve
+  const idx = new Map();
+  for (const a of data.airports){
+    const id = (a.arpt_id||"").toUpperCase();
+    if (!id) continue;
+    idx.set(id, a);
+
+    // If dataset uses 3-letter ID, also index ICAO K+ID
+    if (/^[A-Z]{3}$/.test(id)){
+      idx.set("K"+id, a);
+    }
+    // If dataset uses ICAO KXXX, also index XXX
+    if (/^K[A-Z]{3}$/.test(id)){
+      idx.set(id.substring(1), a);
+    }
+  }
+  state.airportIndex = idx;
+
   el("dataVersion").textContent = "Runways loaded • " + (data.generated_utc || "dataset");
-  el("airportHint").textContent = "Search by airport ID (FAA/ICAO) or city/state (e.g., 'TACOMA WA'). Select from results.";
+  el("airportHint").textContent = "Enter FAA/IATA (e.g., SPG) or ICAO (e.g., KSPG). The app will match either form when available.";
 }
 
 function normalizeQuery(q){
@@ -112,17 +132,22 @@ function defaultMetarStationId(airportId){
 
 function airportMatches(a, q){
   if (!q) return false;
-  const n = normalizeAirportId(q);
   const id = (a.arpt_id||"").toUpperCase();
   const city = (a.city||"").toUpperCase();
   const st = (a.state||"").toUpperCase();
+  const nq = normalizeQuery(q);
 
-  // Match FAA/IATA (e.g., SEA) and ICAO (e.g., KSEA) to the same airport record when applicable
+  // direct match for FAA/IATA or ICAO equivalents
+  const n = normalizeAirportId(nq);
   if (id === n.faa || id === n.icao) return true;
+
+  // starts-with match for both forms
+  if (id.startsWith(nq)) return true;
   if (id.startsWith(n.faa) || id.startsWith(n.icao)) return true;
 
-  if ((city + " " + st).includes(n.faa) || (city + " " + st).includes(n.icao)) return true;
-  if ((city + " " + st).includes(q)) return true;
+  // city/state contains
+  if ((city + " " + st).includes(nq)) return true;
+  if (n.faa && (city + " " + st).includes(n.faa)) return true;
 
   return false;
 }
@@ -131,6 +156,20 @@ function renderAirportResults(q){
   const box = el("airportResults");
   box.innerHTML = "";
   if (!state.data || !q || q.length < 2) return;
+
+  // Prioritize exact match via index (e.g., KSPG should surface SPG)
+  if (state.airportIndex){
+    const n = normalizeAirportId(q);
+    const exact = state.airportIndex.get(q) || state.airportIndex.get(n.faa) || state.airportIndex.get(n.icao);
+    if (exact){
+      const d = document.createElement("div");
+      d.className = "resultItem";
+      const label = `${(exact.arpt_id||"").toUpperCase()} — ${exact.city || ""}${exact.city ? ", " : ""}${exact.state || ""}`.trim();
+      d.textContent = label + " (exact)";
+      d.addEventListener("click", () => selectAirport((exact.arpt_id||"").toUpperCase()));
+      box.appendChild(d);
+    }
+  }
 
   // limit results
   const matches = [];
@@ -156,19 +195,26 @@ function selectAirport(arptId){
   const q = normalizeQuery(arptId);
   const n = normalizeAirportId(q);
 
-  // Prefer exact FAA/IATA match first; then ICAO; then fallback exact
-  let a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === n.faa);
-  if (!a) a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === n.icao);
-  if (!a) a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === q);
+  let a = null;
+  if (state.airportIndex){
+    a = state.airportIndex.get(q) || state.airportIndex.get(n.faa) || state.airportIndex.get(n.icao);
+  }
+  // fallback scan
+  if (!a){
+    a = state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === n.faa) ||
+        state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === n.icao) ||
+        state.data.airports.find(x => (x.arpt_id||"").toUpperCase() === q);
+  }
   if (!a) return;
 
   state.airport = a;
-  el("airportInput").value = (a.arpt_id||"").toUpperCase();
+  const selectedId = (a.arpt_id||"").toUpperCase();
+  el("airportInput").value = selectedId;
   el("airportResults").innerHTML = "";
 
   // restore per-airport METAR station override (if any)
   try{
-    const key = "metar_station_for_" + el("airportInput").value;
+    const key = "metar_station_for_" + selectedId;
     const saved = localStorage.getItem(key);
     const o = el("metarStationInput");
     if (o) o.value = saved ? saved : "";
@@ -319,7 +365,8 @@ async function fetchMetar(){
     console.error(e);
     state.metar = null;
     el("metarRaw").textContent = "METAR: —";
-    el("metarMeta").textContent = "METAR error: " + e.message + " • Tip: set METAR station override (e.g., KSEA).";
+    el("metarMeta").textContent = "METAR error: " + (e?.message || e) + " • URL: " + url + " • Tip: set METAR station override (e.g., KSEA). If you just updated the app, tap Reset app cache.";
+
     updateComputed();
     updateArmReady();
   }
@@ -686,6 +733,26 @@ function stopMonitoring(){
 }
 
 /* Startup */
+
+async function resetAppCache(){
+  try{
+    // Unregister service workers
+    if ("serviceWorker" in navigator){
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const r of regs){ await r.unregister(); }
+    }
+    // Clear caches
+    if ("caches" in window){
+      const keys = await caches.keys();
+      for (const k of keys){ await caches.delete(k); }
+    }
+    alert("App cache cleared. The page will reload now.");
+    location.reload(true);
+  }catch(e){
+    alert("Reset failed: " + (e?.message || e));
+  }
+}
+
 window.addEventListener("load", async () => {
   await registerSW();
   await loadData();
@@ -735,6 +802,9 @@ window.addEventListener("load", async () => {
   });
   el("stopBtn").addEventListener("click", ()=>{
     stopMonitoring();
+  });
+  el("resetBtn").addEventListener("click", ()=>{
+    resetAppCache();
   });
   el("backBtn").addEventListener("click", ()=>{
     stopMonitoring();
