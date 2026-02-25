@@ -56,26 +56,17 @@
 
       <div class="grid2">
         <div>
-          <button id="fetchMetarBtn"
-
-      <div class="grid2">
-        <div>
-          <label for="metarStationInput">METAR station override (optional)</label>
-          <input id="metarStationInput" type="text" placeholder="e.g., KSEA (leave blank to use airport ID)" autocomplete="off" />
-          <div class="hint small">If the selected airport ID is not a METAR station, enter a nearby ICAO station (Kxxx/Pxxx). Stored locally.</div>
-        </div>
-        <div>
-          <label for="metarProxyInput">METAR proxy (Cloudflare Worker)</label>
-          <input id="metarProxyInput" type="text" placeholder="https://your-worker.workers.dev" />
-          <div class="hint small">Used to bypass browser CORS limits. Default is prefilled.</div>
-        </div>
-      </div>
-
- class="btn" disabled>Fetch METAR</button>
+          <button id="fetchMetarBtn" class="btn" disabled>Fetch METAR</button>
           <button id="refreshMetarBtn" class="btn btn-secondary" disabled>Refresh</button>
           <div class="hint small">Weather source: AviationWeather (AWC) Data API (latest METAR).</div>
+        <div>
+          <label for="metarStationInput">METAR station (override)</label>
+          <input id="metarStationInput" type="text" placeholder="Optional. e.g., KSEA" autocomplete="off" />
+          <div class="hint">If METAR fails, enter a nearby reporting station (ICAO). Saved per airport.</div>
         </div>
-        <div class="metarBox">
+
+        </div>
+      <div class="metarBox">
           <div class="metarTop">
             <div class="kpi">
               <div class="kpiLabel">Density Altitude (ft)</div>

@@ -4,6 +4,9 @@
 */
 "use strict";
 
+const METAR_PROXY_BASE = "https://icy-pine-f75c.flyandteach.workers.dev/";
+
+
 const el = (id) => document.getElementById(id);
 
 const state = {
@@ -29,29 +32,6 @@ const state = {
   alertFastTimer: null,
   lastStatus: "READY"
 };
-
-const DEFAULT_METAR_PROXY = "https://icy-pine-f75c.flyandteach.workers.dev"; // user-provided
-
-function getMetarProxyBase(){
-  const v = (el("metarProxyInput")?.value || "").trim();
-  if (v) return v.replace(/\/+$/,"");
-  try{
-    const s = (localStorage.getItem("metar_proxy_base") || "").trim();
-    if (s) return s.replace(/\/+$/,"");
-  }catch(e){}
-  return DEFAULT_METAR_PROXY;
-}
-
-function getMetarStationId(){
-  const override = (el("metarStationInput")?.value || "").trim().toUpperCase();
-  if (override) return override;
-  const id = (state.airport?.arpt_id || "").trim().toUpperCase();
-  // Default: if it looks like an ICAO station, use it; otherwise user should override.
-  if (/^[A-Z0-9]{3,4}$/.test(id) && (id.startsWith("K") || id.startsWith("P"))) return id;
-  return id;
-}
-
-
 
 function fmtFt(x){
   if (x === null || x === undefined || Number.isNaN(x)) return "—";
@@ -157,20 +137,14 @@ function selectAirport(arptId){
   state.airport = a;
   el("airportInput").value = id;
   el("airportResults").innerHTML = "";
-  
-  // Restore per-airport METAR station override (if previously saved)
+  // restore per-airport METAR station override (if any)
   try{
-    const key = "metar_station_override_" + id;
-    const saved = (localStorage.getItem(key) || "").trim().toUpperCase();
-    if (el("metarStationInput")){
-      if (saved) el("metarStationInput").value = saved;
-      else {
-        if (/^[A-Z0-9]{3,4}$/.test(id) && (id.startsWith("K") || id.startsWith("P"))) el("metarStationInput").value = id;
-        else el("metarStationInput").value = "";
-      }
-    }
+    const key = "metar_station_for_" + id;
+    const saved = localStorage.getItem(key);
+    const o = el("metarStationInput");
+    if (o) o.value = saved ? saved : "";
   }catch(e){}
-populateRunways();
+  populateRunways();
 }
 
 function populateRunways(){
@@ -274,42 +248,49 @@ function parseMetarJson(item){
 
 async function fetchMetar(){
   if (!state.airport) return;
-  // Assume ARPT_ID is station identifier for METAR where applicable (e.g., KSEA). If not, the fetch may fail.
-  // For FAA LID-only airports, user can enter a nearby station by prefixing 'K...' in the airport field.
-  const id = normalizeQuery(state.airport.arpt_id);
-  const stationId = getMetarStationId();
-  const proxyBase = getMetarProxyBase();
-  
-  // Persist proxy + station override for this airport
+
+  const airportId = normalizeQuery(state.airport.arpt_id);
+
+  // Optional user override for METAR station (ICAO), saved per airport
+  const overrideEl = el("metarStationInput");
+  let stationId = overrideEl ? normalizeQuery(overrideEl.value) : "";
+
   try{
-    if (el("metarProxyInput")){
-      localStorage.setItem("metar_proxy_base", proxyBase);
+    const key = "metar_station_for_" + airportId;
+    if (!stationId){
+      const saved = localStorage.getItem(key);
+      if (saved) stationId = normalizeQuery(saved);
+      if (overrideEl && stationId) overrideEl.value = stationId;
+    } else {
+      localStorage.setItem(key, stationId);
     }
-    if (state.airport?.arpt_id){
-      const key = "metar_station_override_" + normalizeQuery(state.airport.arpt_id);
-      const v = (el("metarStationInput")?.value || "").trim().toUpperCase();
-      if (v) localStorage.setItem(key, v);
-      else localStorage.removeItem(key);
-    }
-  }catch(e){}
-const url = `${proxyBase}/metar?ids=${encodeURIComponent(stationId)}`;
+  }catch(e){ /* ignore */ }
+
+  // Default to airportId if no override
+  if (!stationId) stationId = airportId;
+
+  // Use CORS-safe proxy (expects ?ids=...)
+  const url = `${METAR_PROXY_BASE}?ids=${encodeURIComponent(stationId)}`;
+
   el("metarMeta").textContent = "Fetching METAR…";
   try{
     const resp = await fetch(url, {cache:"no-store"});
     if (!resp.ok) throw new Error("METAR fetch failed: " + resp.status);
     const arr = await resp.json();
-    if (!Array.isArray(arr) || arr.length === 0) throw new Error(`No METAR returned for ${stationId}. If this is a FAA LID, enter a nearby ICAO METAR station in the override field.`);
+    if (!Array.isArray(arr) || arr.length === 0) throw new Error("No METAR returned for " + stationId);
     const m = parseMetarJson(arr[0]);
     state.metar = m;
+
+    const used = stationId !== airportId ? ` (override: ${stationId})` : "";
     el("metarRaw").textContent = "METAR: " + (m.raw || "(no raw METAR provided)");
-    el("metarMeta").textContent = `Station: ${m.station || stationId} • Time: ${m.time || "—"} • Altim: ${m.altim ?? "—"} inHg • Temp: ${m.tempC ?? "—"}°C • Wind: ${(m.wdir ?? "VRB")} / ${(m.wspd ?? "—")} kt • Proxy: ${proxyBase}`;
+    el("metarMeta").textContent = `Station: ${m.station || stationId}${used} • Time: ${m.time || "—"} • Altim: ${m.altim ?? "—"} inHg • Temp: ${m.tempC ?? "—"}°C • Wind: ${(m.wdir ?? "VRB")} / ${(m.wspd ?? "—")} kt`;
     updateComputed();
     updateArmReady();
   }catch(e){
     console.error(e);
     state.metar = null;
     el("metarRaw").textContent = "METAR: —";
-    el("metarMeta").textContent = "METAR error: " + e.message;
+    el("metarMeta").textContent = "METAR error: " + e.message + " • Tip: set METAR station override (e.g., KSEA).";
     updateComputed();
     updateArmReady();
   }
@@ -679,15 +660,6 @@ function stopMonitoring(){
 window.addEventListener("load", async () => {
   await registerSW();
   await loadData();
-
-  // Prefill METAR proxy input
-  try{
-    const savedProxy = (localStorage.getItem("metar_proxy_base") || "").trim();
-    if (el("metarProxyInput")) el("metarProxyInput").value = savedProxy || DEFAULT_METAR_PROXY;
-  }catch(e){
-    if (el("metarProxyInput")) el("metarProxyInput").value = DEFAULT_METAR_PROXY;
-  }
-
 
   // restore Vr
   try{

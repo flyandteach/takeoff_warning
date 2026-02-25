@@ -27,7 +27,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   // Network-first for METAR requests; cache-first for local assets
-  if (url.hostname.includes("aviationweather.gov") || url.hostname.includes("flyandteach.workers.dev") || url.hostname.includes("workers.dev")) {
+  if (url.hostname.includes("aviationweather.gov") || url.hostname.includes("flyandteach.workers.dev")) {
     event.respondWith((async () => {
       try {
         const resp = await fetch(event.request);
